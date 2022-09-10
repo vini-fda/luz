@@ -5,8 +5,8 @@ use na::Rotation2;
 use nalgebra::distance_squared;
 use std::f64::consts::PI;
 use std::f64::EPSILON;
-struct Polygon {
-    points: Vec<Point2>, // counterclockwise
+pub(crate) struct Polygon {
+    pub points: Vec<Point2>, // counterclockwise
 }
 
 fn cross(v0: Vec2, v1: Vec2) -> f64 {
@@ -14,7 +14,7 @@ fn cross(v0: Vec2, v1: Vec2) -> f64 {
 }
 
 impl Polygon {
-    fn new(points: Vec<Point2>) -> Self {
+    pub fn new(points: Vec<Point2>) -> Self {
         if points.len() > 1 {
             Self { points }
         } else {
@@ -22,7 +22,7 @@ impl Polygon {
         }
     }
 
-    fn rectangle(center: Point2, theta: f64, w: f64, h: f64) -> Self {
+    pub fn rectangle(center: Point2, theta: f64, w: f64, h: f64) -> Self {
         Self::new(
             [
                 Vec2::new(w / 2.0, -h / 2.0),
@@ -37,7 +37,7 @@ impl Polygon {
         )
     }
 
-    fn ngon(center: Point2, r: f64, n: u32) -> Self {
+    pub fn ngon(center: Point2, r: f64, n: u32) -> Self {
         Self::new(
             (0..n)
                 .map(|i| i as f64 * 2.0 * PI / n as f64)

@@ -4,9 +4,9 @@ use crate::geometry::types::*;
 use nalgebra::distance_squared;
 use std::f64::EPSILON;
 
-struct Circle {
-    center: Point2,
-    r: f64,
+pub(crate) struct Circle {
+    pub center: Point2,
+    pub r: f64,
 }
 
 impl Shape for Circle {

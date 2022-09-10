@@ -1,12 +1,12 @@
 #[derive(Clone, Copy)]
-struct Color {
-    r: f64,
-    g: f64,
-    b: f64,
+pub(crate) struct Color {
+    pub r: f64,
+    pub g: f64,
+    pub b: f64,
 }
 
 impl Color {
-    fn black() -> Self {
+    pub fn black() -> Self {
         Self {
             r: 0.0,
             g: 0.0,
