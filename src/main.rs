@@ -1,3 +1,7 @@
+mod geometry;
+mod graphics;
+extern crate nalgebra as na;
+
 use image::{ImageBuffer, Rgb};
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
@@ -5,12 +9,13 @@ use rand::Rng;
 use rayon::prelude::*;
 use std::cmp::min;
 use std::f64::consts::PI;
+use std::sync::{Arc, Mutex};
 
-const W: u32 = 512;
-const H: u32 = 512;
-const N: u32 = 256;
+const W: u32 = 256;
+const H: u32 = 256;
+const N: u32 = 128;
 const EPSILON: f64 = 1e-6;
-const MAX_DEPTH: u32 = 3;
+const MAX_DEPTH: u32 = 2;
 
 #[derive(Clone, Copy)]
 struct Color {
@@ -266,39 +271,6 @@ impl Shape for Polygon {
     }
 }
 
-struct UnionShape {
-    a: Box<dyn Shape + Sync>,
-    b: Box<dyn Shape + Sync>,
-}
-
-impl Shape for UnionShape {
-    fn intersect(&self, p: (f64, f64), d: (f64, f64)) -> Option<Intersection> {
-        match (self.a.intersect(p, d), self.b.intersect(p, d)) {
-            (Some(i1), Some(i2)) => {
-                let d1 = distance(p, i1.point);
-                let d2 = distance(p, i2.point);
-                if d1 < d2 {
-                    Some(i1)
-                } else {
-                    Some(i2)
-                }
-            }
-            (None, r2) => r2,
-            (r1, None) => r1,
-        }
-    }
-
-    fn is_inside(&self, p: (f64, f64)) -> bool {
-        self.a.is_inside(p) || self.b.is_inside(p)
-    }
-}
-
-impl UnionShape {
-    fn new(a: Box<dyn Shape + Sync>, b: Box<dyn Shape + Sync>) -> UnionShape {
-        UnionShape { a: a, b: b }
-    }
-}
-
 struct IntersectShape {
     a: Box<dyn Shape + Sync>,
     b: Box<dyn Shape + Sync>,
@@ -349,7 +321,7 @@ impl Shape for IntersectShape {
 
 impl IntersectShape {
     fn new(a: Box<dyn Shape + Sync>, b: Box<dyn Shape + Sync>) -> IntersectShape {
-        IntersectShape { a: a, b: b }
+        IntersectShape { a, b }
     }
 }
 
@@ -377,7 +349,7 @@ impl Entity {
             .map(|intersection| EntityIntersection {
                 point: intersection.point,
                 normal: intersection.normal,
-                emissive: self.emissive.clone(),
+                emissive: self.emissive,
                 reflectivity: self.reflectivity,
                 eta: self.eta,
                 absorption: self.absorption,
@@ -417,6 +389,9 @@ impl Scene {
 }
 
 fn reflect(ix: f64, iy: f64, nx: f64, ny: f64) -> (f64, f64) {
+    // https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
+    // This function reflects the i vector over the vector n
+    // The vector n must be normalized
     let dot2 = (ix * nx + iy * ny) * 2.0;
     (ix - dot2 * nx, iy - dot2 * ny)
 }
@@ -497,18 +472,29 @@ fn trace(scene: &Scene, ox: f64, oy: f64, dx: f64, dy: f64, depth: u32) -> Color
 }
 
 fn sample(scene: &Scene, rng: &mut ThreadRng, x: f64, y: f64) -> Color {
-    let sum: Color = (0..N)
-        .map(|i| 2.0 * PI * (i as f64 + rng.gen_range(0.0, 1.0)) / N as f64)
-        .collect::<Vec<f64>>()
-        .par_iter()
+    let v: Vec<f64> = (0..N)
+        .map(|i| 2.0 * PI * (i as f64 + rng.gen_range(0.0..=1.0)) / N as f64)
+        .collect();
+    let sum: Color = v
+        .iter()
         .map(|a| trace(scene, x, y, a.cos(), a.sin(), 0))
+        .sum();
+    sum * (1.0 / N as f64)
+}
+
+fn sample_par(scene: &Scene, x: f64, y: f64) -> Color {
+    let sum: Color = (0..N)
+        .into_par_iter()
+        .map_init(thread_rng, |rng, i| {
+            let a = 2.0 * PI * (i as f64 + rng.gen_range(0.0..=1.0)) / N as f64;
+            trace(scene, x, y, a.cos(), a.sin(), 0)
+        })
         .sum();
     sum * (1.0 / N as f64)
 }
 
 fn main() {
     let mut img = ImageBuffer::from_pixel(W, H, Rgb([0u8, 0u8, 0u8]));
-    let mut rng = thread_rng();
     let scene = Scene {
         entities: vec![
             Entity {
@@ -527,28 +513,69 @@ fn main() {
                 absorption: Color::black(),
             },
             Entity {
-                shape: Box::new(Polygon::ngon(0.5, 0.5, 0.25, 5)),
+                shape: Box::new(Circle {
+                    cx: 0.1,
+                    cy: 0.2,
+                    r: 0.1,
+                }),
                 emissive: Color::black(),
                 reflectivity: 0.0,
-                eta: 1.5,
+                eta: 0.5,
                 absorption: Color {
-                    r: 4.0,
+                    r: 1.0,
                     g: 4.0,
                     b: 1.0,
                 },
             },
+            Entity {
+                shape: Box::new(Polygon::ngon(0.75, 0.5, 0.25, 6)),
+                emissive: Color::black(),
+                reflectivity: 0.1,
+                eta: 1.5,
+                absorption: Color {
+                    r: 1.0,
+                    g: 4.0,
+                    b: 4.0,
+                },
+            },
+            // Entity {
+            //     shape: Box::new(Polygon::rectangle(0.6, 0.1, 0.0, 0.5, 0.01)),
+            //     emissive: Color::black(),
+            //     reflectivity: 0.0,
+            //     eta: 1.0,
+            //     absorption: Color {
+            //         r: 1.0,
+            //         g: 4.0,
+            //         b: 1.0,
+            //     },
+            // },
         ],
     };
-    for x in 0..W {
+    // let mut rng = thread_rng();
+    // for x in 0..W {
+    //     for y in 0..H {
+    //         let xx = x as f64 / W as f64;
+    //         let yy = y as f64 / H as f64;
+    //         let color = sample(&scene, &mut rng, xx, yy);
+    //         let r = min((color.r * 255.0) as u32, 255) as u8;
+    //         let g = min((color.g * 255.0) as u32, 255) as u8;
+    //         let b = min((color.b * 255.0) as u32, 255) as u8;
+    //         img.put_pixel(x, y, Rgb([r, g, b]));
+    //     }
+    // }
+    // img.save("out.png").unwrap();
+    let img_mutex = Arc::new(Mutex::new(img));
+
+    (0..W).into_par_iter().for_each_init(thread_rng, |rng, x| {
         for y in 0..H {
             let xx = x as f64 / W as f64;
             let yy = y as f64 / H as f64;
-            let color = sample(&scene, &mut rng, xx, yy);
+            let color = sample(&scene, rng, xx, yy);
             let r = min((color.r * 255.0) as u32, 255) as u8;
             let g = min((color.g * 255.0) as u32, 255) as u8;
             let b = min((color.b * 255.0) as u32, 255) as u8;
-            img.put_pixel(x, y, Rgb([r, g, b]));
+            img_mutex.lock().unwrap().put_pixel(x, y, Rgb([r, g, b]));
         }
-    }
-    img.save("out.png").unwrap();
+    });
+    img_mutex.lock().unwrap().save("out.png").unwrap();
 }
