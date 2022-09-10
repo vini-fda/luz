@@ -19,11 +19,10 @@ use std::cmp::min;
 use std::f64::consts::PI;
 use std::sync::{Arc, Mutex};
 
-const W: u32 = 256;
-const H: u32 = 256;
-const N: u32 = 128;
-const EPSILON: f64 = 1e-6;
-const MAX_DEPTH: u32 = 4;
+const W: u32 = 1024;
+const H: u32 = 1024;
+const N: u32 = 512;
+const MAX_DEPTH: u32 = 6;
 
 fn reflect(vi: Vec2, n: UVec2) -> Vec2 {
     // https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
@@ -50,6 +49,7 @@ fn fresnel(cosi: f64, cost: f64, etai: f64, etat: f64) -> f64 {
     (rs * rs + rp * rp) * 0.5
 }
 
+/// Models Schlik's approximation for the fresnel equation
 fn schlick(cosi: f64, cost: f64, etai: f64, etat: f64) -> f64 {
     let r0 = (etai - etat) / (etai + etat);
     let r0 = r0 * r0;
@@ -91,8 +91,8 @@ fn trace(scene: &Scene, center: Point2, d: UVec2, depth: u32) -> Color {
                 }
             }
             if refl > 0.0 {
-                let reflected = UVec2::new_normalize(reflect(*d, n));
-                sum = sum + trace(scene, r.point, reflected, depth + 1) * refl;
+                let new_dir = UVec2::new_normalize(reflect(*d, n));
+                sum = sum + trace(scene, r.point, new_dir, depth + 1) * refl;
             }
         }
         if sign < 0.0 {
@@ -171,13 +171,13 @@ fn main() {
                 },
             },
             Entity {
-                shape: Box::new(Polygon::ngon(Point2::new(0.75, 0.5), 0.25, 6)),
+                shape: Box::new(Polygon::ngon(Point2::new(0.75, 0.5), 0.25, 5)),
                 emissive: Color::black(),
                 reflectivity: 0.1,
-                eta: 0.9,
+                eta: 0.8,
                 absorption: Color {
                     r: 1.0,
-                    g: 4.0,
+                    g: 3.6,
                     b: 4.0,
                 },
             },
