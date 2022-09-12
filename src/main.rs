@@ -19,9 +19,9 @@ use std::cmp::min;
 use std::f64::consts::PI;
 use std::sync::{Arc, Mutex};
 
-const W: u32 = 1024;
-const H: u32 = 1024;
-const N: u32 = 512;
+const W: u32 = 256;
+const H: u32 = 256;
+const N: u32 = 128;
 const MAX_DEPTH: u32 = 6;
 
 fn reflect(vi: Vec2, n: UVec2) -> Vec2 {
@@ -221,5 +221,5 @@ fn main() {
             img_mutex.lock().unwrap().put_pixel(x, y, Rgb([r, g, b]));
         }
     });
-    img_mutex.lock().unwrap().save("out.png").unwrap();
+    //img_mutex.lock().unwrap().save("out.png").unwrap();
 }
