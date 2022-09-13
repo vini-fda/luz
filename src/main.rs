@@ -11,6 +11,8 @@ use crate::graphics::scene::Scene;
 use graphics::entity::Entity;
 use image::{ImageBuffer, Rgb};
 use na::distance;
+use na::vector;
+use na::Rotation2;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
 use rand::Rng;
@@ -67,42 +69,62 @@ fn beer_lambert(a: Color, d: f64) -> Color {
 }
 
 fn trace(scene: &Scene, center: Point2, d: UVec2, depth: u32) -> Color {
-    if let Some(r) = scene.intersect(center, d) {
-        let sign = if r.normal.dot(&d) < 0.0 { 1.0 } else { -1.0 };
-        let mut sum = r.emissive;
-        if depth < MAX_DEPTH && (r.reflectivity > 0.0 || r.eta > 0.0) {
-            let mut refl = r.reflectivity;
-            let n = UVec2::new_unchecked(sign * *r.normal);
-            if r.eta > 0.0 {
-                let eta = if sign < 0.0 { r.eta } else { 1.0 / r.eta };
-                match refract(d, n, eta) {
-                    Some(refracted) => {
-                        let cosi = -n.dot(&d);
-                        let cost = -n.dot(&refracted);
-                        refl = if sign < 0.0 {
-                            schlick(cosi, cost, r.eta, 1.0)
-                        } else {
-                            schlick(cosi, cost, 1.0, r.eta)
-                        };
-                        // TODO: investigate whether to move the center
-                        sum = sum + trace(scene, r.point, refracted, depth + 1) * (1.0 - refl)
-                    }
-                    None => refl = 1.0,
-                }
-            }
-            if refl > 0.0 {
-                let new_dir = UVec2::new_normalize(reflect(*d, n));
-                sum = sum + trace(scene, r.point, new_dir, depth + 1) * refl;
-            }
-        }
-        if sign < 0.0 {
-            sum = sum * beer_lambert(r.absorption, distance(&center, &r.point));
-        }
-        sum
+    if let Some((entity, inter)) = scene.intersect_closest(center, d) {
+        let n = inter.normal;
+        let dot = d.dot(&n);
+        let from_outside = dot < 0.0; // true iff the ray comes into the interface
+        let mut sum = Color::black();
+
+        //
+        let t = vector![n.y, -n.x];
+        // `ws`: `d` decomposed in the normal coordinate space
+        // of the material surface
+        let ws = vector![t.dot(&d), n.dot(&d)];
+        sum = sum + entity.material.emission(ws);
+        unimplemented!()
     } else {
-        Color::black()
+        Color::black();
     }
+    unimplemented!()
 }
+
+// fn trace_old(scene: &Scene, center: Point2, d: UVec2, depth: u32) -> Color {
+//     if let Some(r) = scene.intersect(center, d) {
+//         let sign = if r.normal.dot(&d) < 0.0 { 1.0 } else { -1.0 };
+//         let mut sum = r.emissive;
+//         if depth < MAX_DEPTH && (r.reflectivity > 0.0 || r.eta > 0.0) {
+//             let mut refl = r.reflectivity;
+//             let n = UVec2::new_unchecked(sign * *r.normal);
+//             if r.eta > 0.0 {
+//                 let eta = if sign < 0.0 { r.eta } else { 1.0 / r.eta };
+//                 match refract(d, n, eta) {
+//                     Some(refracted) => {
+//                         let cosi = -n.dot(&d);
+//                         let cost = -n.dot(&refracted);
+//                         refl = if sign < 0.0 {
+//                             schlick(cosi, cost, r.eta, 1.0)
+//                         } else {
+//                             schlick(cosi, cost, 1.0, r.eta)
+//                         };
+//                         // TODO: investigate whether to move the center
+//                         sum = sum + trace(scene, r.point, refracted, depth + 1) * (1.0 - refl)
+//                     }
+//                     None => refl = 1.0,
+//                 }
+//             }
+//             if refl > 0.0 {
+//                 let new_dir = UVec2::new_normalize(reflect(*d, n));
+//                 sum = sum + trace(scene, r.point, new_dir, depth + 1) * refl;
+//             }
+//         }
+//         if sign < 0.0 {
+//             sum = sum * beer_lambert(r.absorption, distance(&center, &r.point));
+//         }
+//         sum
+//     } else {
+//         Color::black()
+//     }
+// }
 
 fn sample(scene: &Scene, rng: &mut ThreadRng, point: Point2) -> Color {
     let v: Vec<f64> = (0..N)
