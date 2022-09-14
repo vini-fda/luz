@@ -15,11 +15,7 @@ pub(crate) struct EntityIntersection {
 
 pub(crate) struct Entity {
     pub shape: Box<dyn Shape + Sync>,
-    pub material: Box<dyn Material + Sync>,
-    // pub emissive: Color,
-    // pub reflectivity: f64,
-    // pub eta: f64,
-    // pub absorption: Color,
+    pub material: Material,
 }
 
 impl Entity {

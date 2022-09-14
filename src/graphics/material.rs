@@ -1,8 +1,6 @@
-use std::rc::Rc;
-
-use nalgebra::vector;
 use rand::{rngs::ThreadRng, Rng};
 
+use super::brdf;
 use crate::geometry::types::*;
 
 use super::color::Color;
@@ -13,8 +11,26 @@ fn fresnel(cosi: f64, cost: f64, etai: f64, etat: f64) -> f64 {
     (rs * rs + rp * rp) * 0.5
 }
 
-struct Material {
-    pub absorptivity: Color,
+pub(crate) enum MaterialType {
+    Lambert, // i.e. diffuse material
+    Dielectric,
+    Mirror,
+    Emissive,
+}
+
+pub(crate) enum SampleResult {
+    Edge(UVec2, f64),
+    Node(Color),
+}
+
+/// Absorbance + Reflectance + Transmittance = 1.0
+pub(crate) struct Material {
+    pub mtype: MaterialType,
+    pub absorptivity: Color, // Lambert-beer model
+    pub absorbance: f64,     // range = [0, 100%]
+    pub reflectance: f64,    // range = [0, 100%]
+    pub eta: f64,            // range = [1.0, infty)
+    pub emmitivity: Color,
 }
 
 impl Material {
@@ -24,12 +40,45 @@ impl Material {
     /// it returns the ratio of reflected radiance exiting along `wr`
     /// to the irradiance incident on the surface from direction `wi`
     //fn brdf(&self, wi: UVec2, wr: UVec2) -> f64;
-    fn sample_dir(&self, wi: UVec2, rng: &mut ThreadRng) -> Option<UVec2>;
-    /// Samples the emission of light at a sampling angle `ws`
-    /// this function assumes the a normalized coordinate space,
-    /// i.e. the normal, tangent vectors are `n = [0; 1]`
-    /// and `t = [1; 0]`, respectively
-    fn emission(&self, ws: Vec2) -> Color;
+    pub fn sample(&self, wi: UVec2, n: UVec2, rng: &mut ThreadRng) -> SampleResult {
+        match self.mtype {
+            MaterialType::Lambert => {
+                let dot = wi.dot(&n);
+                if dot < 0.0 {
+                    let wo = brdf::sample_diffuse(wi, n, rng);
+                    SampleResult::Edge(wo, 1.0)
+                } else {
+                    SampleResult::Node(Color::black())
+                }
+            }
+            MaterialType::Dielectric => {
+                let wo = brdf::sample_dielectric(wi, n, self.eta, rng);
+                SampleResult::Edge(wo, 1.0)
+            }
+            MaterialType::Mirror => {
+                let wo = brdf::sample_mirror(wi, n);
+                SampleResult::Edge(wo, 1.0)
+            }
+            MaterialType::Emissive => SampleResult::Node(self.emmitivity),
+        }
+    }
+}
+
+fn beer_lambert(a: Color, d: f64) -> Color {
+    Color {
+        r: (-a.r * d).exp(),
+        g: (-a.g * d).exp(),
+        b: (-a.b * d).exp(),
+    }
+}
+
+/// Models Schlik's approximation for the fresnel equation
+fn schlick(cosi: f64, cost: f64, etai: f64, etat: f64) -> f64 {
+    let r0 = (etai - etat) / (etai + etat);
+    let r0 = r0 * r0;
+    let a = if etai < etat { 1.0 - cosi } else { 1.0 - cost };
+    let aa = a * a;
+    r0 + (1.0 - r0) * aa * aa * a
 }
 
 // struct ReflectiveMaterial {

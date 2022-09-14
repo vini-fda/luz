@@ -8,27 +8,24 @@ pub(crate) struct Scene {
 }
 
 impl Scene {
-    pub fn intersect_closest(&self, p: Point2, d: UVec2) -> Option<(Entity, Intersection)> {
-        unimplemented!()
+    pub fn intersect_closest(&self, p: Point2, d: UVec2) -> Option<(&Entity, Intersection)> {
+        let mut res: Option<(&Entity, Intersection)> = None;
+        for e in &self.entities {
+            if let Some(intersection) = e.intersect(p, d) {
+                res = match res {
+                    Some(prev_res) => {
+                        if distance_squared(&p, &prev_res.1.point)
+                            > distance_squared(&p, &intersection.point)
+                        {
+                            Some((e, intersection))
+                        } else {
+                            Some(prev_res)
+                        }
+                    }
+                    None => Some((e, intersection)),
+                }
+            }
+        }
+        res
     }
-    // pub fn intersect(&self, p: Point2, d: UVec2) -> Option<EntityIntersection> {
-    //     let mut res: Option<EntityIntersection> = None;
-    //     for e in &self.entities {
-    //         if let Some(intersection) = e.intersect(p, d) {
-    //             res = match res {
-    //                 Some(r) => {
-    //                     if distance_squared(&p, &r.point)
-    //                         > distance_squared(&p, &intersection.point)
-    //                     {
-    //                         Some(intersection)
-    //                     } else {
-    //                         Some(r)
-    //                     }
-    //                 }
-    //                 None => Some(intersection),
-    //             }
-    //         }
-    //     }
-    //     res
-    // }
 }
