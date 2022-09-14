@@ -29,6 +29,14 @@ const H: u32 = 256;
 const N: u32 = 256;
 const MAX_DEPTH: u32 = 6;
 
+fn beer_lambert(a: Color, d: f64) -> Color {
+    Color {
+        r: (-a.r * d).exp(),
+        g: (-a.g * d).exp(),
+        b: (-a.b * d).exp(),
+    }
+}
+
 fn trace(scene: &Scene, center: Point2, d: UVec2, rng: &mut ThreadRng, depth: u32) -> Color {
     if let Some((entity, inter)) = scene.intersect_closest(center, d) {
         let n = inter.normal;
@@ -43,6 +51,10 @@ fn trace(scene: &Scene, center: Point2, d: UVec2, rng: &mut ThreadRng, depth: u3
                 material::SampleResult::Node(emission) => {
                     sum = emission;
                 }
+            }
+            if let MaterialType::Dielectric = entity.material.mtype {
+                let dist = distance(&center, &inter.point);
+                sum = sum * beer_lambert(entity.material.absorptivity, dist);
             }
         }
         sum
@@ -99,9 +111,9 @@ fn main() {
                 material: Material {
                     mtype: MaterialType::Emissive,
                     emmitivity: Color {
-                        r: 10.0,
-                        g: 10.0,
-                        b: 10.0,
+                        r: 5.0,
+                        g: 5.0,
+                        b: 5.0,
                     },
                     absorptivity: Color {
                         r: 1.0,
@@ -139,6 +151,63 @@ fn main() {
                 shape: Box::new(Polygon::ngon(Point2::new(0.75, 0.5), 0.25, 5)),
                 material: Material {
                     mtype: MaterialType::Dielectric,
+                    emmitivity: Color {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                    },
+                    absorptivity: Color {
+                        r: 5.0,
+                        g: 10.0,
+                        b: 3.33,
+                    },
+                    absorbance: 0.0,
+                    reflectance: 0.0,
+                    eta: 1.8,
+                },
+            },
+            Entity {
+                shape: Box::new(Polygon::rectangle(Point2::new(0.1, 0.5), -0.2, 0.1, 0.01)),
+                material: Material {
+                    mtype: MaterialType::Emissive,
+                    emmitivity: Color {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                    },
+                    absorptivity: Color {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                    },
+                    absorbance: 0.0,
+                    reflectance: 0.0,
+                    eta: 1.8,
+                },
+            },
+            Entity {
+                shape: Box::new(Polygon::rectangle(Point2::new(0.3, 0.35), 1.7, 0.1, 0.01)),
+                material: Material {
+                    mtype: MaterialType::Lambert,
+                    emmitivity: Color {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                    },
+                    absorptivity: Color {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                    },
+                    absorbance: 0.0,
+                    reflectance: 0.0,
+                    eta: 1.8,
+                },
+            },
+            Entity {
+                shape: Box::new(Polygon::rectangle(Point2::new(0.1, 0.65), 0.0, 0.1, 0.01)),
+                material: Material {
+                    mtype: MaterialType::Mirror,
                     emmitivity: Color {
                         r: 1.0,
                         g: 1.0,
