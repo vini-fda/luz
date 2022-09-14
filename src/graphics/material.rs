@@ -16,6 +16,7 @@ pub(crate) enum MaterialType {
     Dielectric,
     Mirror,
     Emissive,
+    DirectionalEmissive,
 }
 
 pub(crate) enum SampleResult {
@@ -43,8 +44,8 @@ impl Material {
     pub fn sample(&self, wi: UVec2, n: UVec2, rng: &mut ThreadRng) -> SampleResult {
         match self.mtype {
             MaterialType::Lambert => {
-                let dot = wi.dot(&n);
-                if dot < 0.0 {
+                let cos = wi.dot(&n);
+                if cos < 0.0 {
                     let wo = brdf::sample_diffuse(wi, n, rng);
                     SampleResult::Edge(wo, 1.0)
                 } else {
@@ -60,15 +61,15 @@ impl Material {
                 SampleResult::Edge(wo, 1.0)
             }
             MaterialType::Emissive => SampleResult::Node(self.emmitivity),
+            MaterialType::DirectionalEmissive => {
+                let cos = wi.dot(&n);
+                if cos < -0.9999 {
+                    SampleResult::Node(self.emmitivity)
+                } else {
+                    SampleResult::Node(Color::black())
+                }
+            }
         }
-    }
-}
-
-fn beer_lambert(a: Color, d: f64) -> Color {
-    Color {
-        r: (-a.r * d).exp(),
-        g: (-a.g * d).exp(),
-        b: (-a.b * d).exp(),
     }
 }
 
@@ -80,89 +81,75 @@ fn schlick(cosi: f64, cost: f64, etai: f64, etat: f64) -> f64 {
     let aa = a * a;
     r0 + (1.0 - r0) * aa * aa * a
 }
+/// Uses sellmier equation
+fn eta(lambda: f64) -> f64 {
+    let b1 = 12.0 * 1.03961212;
+    let b2 = 12.0 * 0.231792344;
+    let b3 = 12.0 * 1.01046945;
+    let c1 = 12.0 * 0.00600069867;
+    let c2 = 12.0 * 0.0200179144;
+    let c3 = 12.0 * 103.560653;
 
-// struct ReflectiveMaterial {
-//     pub reflectance: f64,
-// }
+    (_sm(lambda, b1, c1) + _sm(lambda, b2, c2) + _sm(lambda, b3, c3)).sqrt()
+}
 
-// impl Material for ReflectiveMaterial {
-//     fn sample_dir(&self, wi: UVec2, rng: &mut ThreadRng) -> Option<UVec2> {
-//         Some(UVec2::new_unchecked(vector![wi.x, -wi.y]))
-//     }
-//     fn emission(&self, ws: Vec2) -> Color {
-//         Color::black()
-//     }
-// }
+fn _sm(lambda: f64, b: f64, c: f64) -> f64 {
+    let l = lambda * lambda;
+    b * l / (l - c)
+}
 
-// struct AbsorptiveMaterial {
-//     pub absorptivity: Color,
-// }
+fn color(lambda: f64) -> Color {
+    let gamma = 0.80;
+    let factor;
+    let red;
+    let green;
+    let blue;
 
-// impl Material for AbsorptiveMaterial {
-//     fn sample_dir(&self, wi: UVec2, rng: &mut ThreadRng) -> Option<(UVec2, f64)> {
-//         None
-//     }
-//     fn emission(&self, ws: Vec2) -> Color {
-//         Color::black()
-//     }
-// }
+    if (lambda >= 380.0) && (lambda < 440.0) {
+        red = -(lambda - 440.0) / (440.0 - 380.0);
+        green = 0.0;
+        blue = 1.0;
+    } else if (lambda >= 440.0) && (lambda < 490.0) {
+        red = 0.0;
+        green = (lambda - 440.0) / (490.0 - 440.0);
+        blue = 1.0;
+    } else if (lambda >= 490.0) && (lambda < 510.0) {
+        red = 0.0;
+        green = 1.0;
+        blue = -(lambda - 510.0) / (510.0 - 490.0);
+    } else if (lambda >= 510.0) && (lambda < 580.0) {
+        red = (lambda - 510.0) / (580.0 - 510.0);
+        green = 1.0;
+        blue = 0.0;
+    } else if ((lambda >= 580.0) && (lambda < 645.0)) {
+        red = 1.0;
+        green = -(lambda - 645.0) / (645.0 - 580.0);
+        blue = 0.0;
+    } else if ((lambda >= 645.0) && (lambda < 781.0)) {
+        red = 1.0;
+        green = 0.0;
+        blue = 0.0;
+    } else {
+        red = 0.0;
+        green = 0.0;
+        blue = 0.0;
+    };
 
-// struct EmissiveMaterial {
-//     pub emissive: Color,
-// }
+    // Let the intensity fall off near the vision limits
 
-// impl Material for EmissiveMaterial {
-//     fn sample_dir(&self, wi: UVec2, rng: &mut ThreadRng) -> Option<UVec2> {
-//         Some(UVec2::new_unchecked(vector![wi.x, -wi.y]))
-//     }
-//     fn emission(&self, ws: Vec2) -> Color {
-//         self.emissive
-//     }
-// }
+    if (380.0..420.0).contains(&lambda) {
+        factor = 0.3 + 0.7 * (lambda - 380.0) / (420.0 - 380.0);
+    } else if (420.0..701.0).contains(&lambda) {
+        factor = 1.0;
+    } else if (701.0..781.0).contains(&lambda) {
+        factor = 0.3 + 0.7 * (780.0 - lambda) / (780.0 - 700.0);
+    } else {
+        factor = 0.0;
+    };
 
-// struct DielectricMaterial {
-//     eta: f64, // relative eta: ratio between eta and eta0 (free space)
-// }
-
-// impl Material for DielectricMaterial {
-//     fn sample_dir(&self, wi: UVec2, rng: &mut ThreadRng) -> Option<UVec2> {
-//         // relative eta: eta_r = eta1/eta2
-//         let eta_r = if wi.y < 0.0 { 1.0 / self.eta } else { self.eta };
-
-//         unimplemented!()
-//     }
-//     fn emission(&self, ws: Vec2) -> Color {
-//         Color::black()
-//     }
-// }
-
-// struct DiffuseMaterial {
-//     rng: Rc<ThreadRng>,
-// }
-
-// impl Material for DiffuseMaterial {
-//     fn sample_dir(&self, wi: UVec2, rng: &mut ThreadRng) -> Option<UVec2> {
-//         let xi = self.rng.gen_range(0.0..=1.0);
-//         let sin_theta = 2.0 * xi - 1.0;
-//         let cos_theta = (1.0f64 - sin_theta * sin_theta).sqrt();
-//         Some(UVec2::new_unchecked(vector![cos_theta, sin_theta]))
-//     }
-//     fn emission(&self, ws: Vec2) -> Color {
-//         Color::black()
-//     }
-// }
-
-// pub(crate) trait Material {
-//     /// This function is the BRDF of the material:
-//     /// for an incoming light direction `wi`, and
-//     /// an outgoing direction `wr`,
-//     /// it returns the ratio of reflected radiance exiting along `wr`
-//     /// to the irradiance incident on the surface from direction `wi`
-//     //fn brdf(&self, wi: UVec2, wr: UVec2) -> f64;
-//     fn sample_dir(&self, wi: UVec2, rng: &mut ThreadRng) -> Option<UVec2>;
-//     /// Samples the emission of light at a sampling angle `ws`
-//     /// this function assumes the a normalized coordinate space,
-//     /// i.e. the normal, tangent vectors are `n = [0; 1]`
-//     /// and `t = [1; 0]`, respectively
-//     fn emission(&self, ws: Vec2) -> Color;
-// }
+    Color {
+        r: f64::powf(red * factor, gamma),
+        g: f64::powf(green * factor, gamma),
+        b: f64::powf(blue * factor, gamma),
+    }
+}
